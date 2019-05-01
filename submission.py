@@ -1,7 +1,8 @@
 import re
-from collections import defaultdict
+from collections import defaultdict, deque
 import math
 import time
+from copy import deepcopy
 class TransitionProbability:
     def __init__(self, state_flie_name):
         # with open(state_flie_name) as f:
@@ -117,7 +118,7 @@ def tokens(s):
     return tokens
 
 
-def viterbi(obs, states, start_p, trans_p, emit_p, k=1):
+def viterbi(obs, states, start_p, trans_p, emit_p):
     V = [{}]
     path = {}
 
@@ -144,6 +145,42 @@ def viterbi(obs, states, start_p, trans_p, emit_p, k=1):
 
     (prob, state) = max([(V[len(obs) - 1][y], y) for y in states])
     return path[state], prob
+
+
+def viterbi_top_k(obs, states, start_p, trans_p, emit_p, k=1):
+    V = [{}]
+    path = defaultdict()
+
+    # Initialize base cases (t == 0)
+    for y in states:
+        V[0][y] = [(start_p(y) * emit_p((y, obs[0])),)]
+        path[y] = deque([[y]])
+
+    # Run Viterbi for t > 0
+    for t in range(1, len(obs)):
+        V.append({})
+        newpath = defaultdict(deque)
+
+        for y in states:
+            tmp_path = deepcopy(path)
+            tmp = []
+            for y0 in states:
+                for b_top in V[t - 1][y0]:
+                    tmp.append((b_top[0] * trans_p((y0, y)) * emit_p((y, obs[t])), y0))
+            b_top_list = sorted(tmp, key=lambda x: (x[0], -x[1]), reverse=True)[:k]
+
+            V[t][y] = b_top_list
+            for b_top in V[t][y]:
+                newpath[y].append(tmp_path[b_top[1]].popleft() + [y])
+
+        # Don't need to remember the old paths
+        path = newpath
+
+    b_top_list = sorted([(b_top[0], y) for y0 in states for b_top in V[len(obs) - 1][y0]], key=lambda x: (x[0], -x[1]), reverse=True)[:k]
+    result = []
+    for b_top in b_top_list:
+        result.append((path[b_top[1]].popleft(), b_top[0]))
+    return result
 
 
 # Question 1
@@ -180,25 +217,42 @@ def viterbi_algorithm(State_File, Symbol_File, Query_File):  # do not change the
 
 # Question 2
 def top_k_viterbi(State_File, Symbol_File, Query_File, k):  # do not change the heading of the function
-    pass  # Replace this line with your implementation...
-
+    tp = TransitionProbability(State_File)
+    ep = EmissionProbabilities(Symbol_File, end_state_id=tp.END_INDEX)
+    result = list()
+    with open(Query_File)as f:
+        for l in f:
+            t = tokens(l.strip())
+            t.append('ZSC1994END')
+            # print(t)
+            b_top_list = viterbi_top_k(t, range(tp.num_states), tp.get_start_probability, tp.get_probability, ep.get_probability, k)
+            for b in b_top_list:
+                sub_list = [tp.BEGIN_INDEX]
+                sub_list += b[0]
+                sub_list.append(math.log(b[1]))
+                result.append(sub_list)
+    return result
 
 # Question 3 + Bonus
 def advanced_decoding(State_File, Symbol_File, Query_File):  # do not change the heading of the function
     pass  # Replace this line with your implementation...
 
 
-prefix = './toy_example/'
-prefix1 = './dev_set/'
-files = ['State_File', 'Symbol_File', 'Query_File']
-
-t1 = time.time()
-viterbi_result = viterbi_algorithm(*list(map(lambda x: prefix1+x, files)))
-t2 = time.time()
-print(t2-t1)
-with open('./p.txt', mode='w+') as p:
-    for row in viterbi_result:
-        # print(row)
-        p.write(f'{row}\n')
-        # p.write(' '.join(map(str, row[:-1]))+'\n')
+# prefix = './toy_example/'
+# prefix1 = './dev_set/'
+# files = ['State_File', 'Symbol_File', 'Query_File']
+#
+# # t1 = time.time()
+# viterbi_result = top_k_viterbi(*list(map(lambda x: prefix+x, files)), k=4)
+# # t2 = time.time()
+# # print(t2-t1)
+#
+# for i in viterbi_result:
+#     print(i[-1])
+#
+# with open('./p.txt', mode='w+') as p:
+#     for row in viterbi_result:
+#         # print(row)
+#         p.write(f'{row[-1]}\n')
+#         # p.write(' '.join(map(str, row[:-1]))+'\n')
 
